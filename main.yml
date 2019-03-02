@@ -1,0 +1,70 @@
+# This section is simple configuration for installing docker
+#
+- hosts: all
+  tasks:
+   - name: "Turning Selinux Off"
+     selinux: 
+       policy: targeted
+       state: permissive
+   - name: "Disbale Firewall"
+     service:
+       name: firewalld
+       state: stopped
+   - name: "Installing Docker"
+     package: 
+       name: docker-ce
+       state: present
+   - name: "Restart Docker service"
+     service:
+       name: docker
+       state: restarted
+       enabled: yes
+   - name: "Docker"
+     package:
+       name: python2-pip
+       state: present
+   - pip:
+       name: docker-py  
+   - command: "pip install --upgrade pip"
+
+# This section is to create the ip mentioned in the variable file a docker regisry
+#
+- hosts: registry.lw.com
+  tasks: 
+   - name: "Downloading registry image"
+     docker_image: 
+       name: registry:latest
+   - stat:
+       path: /repo
+     register: x
+   - file:
+       path: /repo
+       state: directory
+       mode: 0777
+     when: x.stat.exists != true
+   - name: "Creating Registry container"
+     docker_container:
+       name: av
+       image: registry:latest
+       interactive: yes
+       tty: yes
+       detach: yes
+       volumes:
+        - /repo:/var/lib/registry
+       ports:
+        - 5000:5000
+- hosts: clients
+  tasks:
+   - name: "Updating conf file in dockers"
+     replace:
+       path: "/usr/lib/systemd/system/docker.service"
+       regexp: "ExecStart=/usr/bin/dockerd"
+       replace: "ExecStart=/usr/bin/dockerd  --insecure-registry registry.lw.com:5000"
+   - systemd:
+       daemon_reload: yes
+       name: docker
+       state: restarted
+       enabled: yes
+       
+     
+
